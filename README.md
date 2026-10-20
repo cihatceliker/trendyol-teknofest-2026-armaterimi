@@ -8,6 +8,7 @@ This repository is a reference for the completed competition solution. The submi
 
 - **[Final solution report](armaterimi_development_dump/docs/FINAL_REPORT_EN.md)** — the approach, experiments, ablations, and measured results.
 - **[Original submitted report (Word)](armaterimi_FINAL_REPORT.docx)**.
+- **[Complete submission ZIP](https://github.com/cihatceliker/trendyol-teknofest-2026-armaterimi/releases/tag/submission)** — the original delivered bundle, including the checkpoint and generated data.
 - **[Docker submission README](armaterimi_docker/README.md)** — the submitted model, decision rule, runtime, and reproducibility record.
 - **[Experiment log](armaterimi_development_dump/docs/EXPERIMENT_LOG.md)** — the development history, including rejected approaches.
 
@@ -46,7 +47,7 @@ Git contains the source, documentation, final report, tokenizer, model configura
 - `armaterimi_development_dump/generated_data/` contents other than [`DATA_README.md`](armaterimi_development_dump/generated_data/DATA_README.md) — the generated training tables and audit artifacts.
 - `armaterimi_docker/vendor/ngrok` — the vendored executable; its checksum remains in the repository.
 
-A clone alone is therefore a source reference, not a complete runnable submission. To run the delivered solution, obtain the original submission bundle and restore the checkpoint and vendored executable at their original paths. Prediction requires Docker with NVIDIA GPU support and a competition-format input CSV; training also requires the original data and development environment.
+A clone alone is therefore a source reference, not a complete runnable submission. To run the delivered solution, download and extract the ZIP attached to the [submission release](https://github.com/cihatceliker/trendyol-teknofest-2026-armaterimi/releases/tag/submission), which contains the checkpoint and vendored executable at their original paths. Prediction requires Docker with NVIDIA GPU support and a competition-format input CSV; training also requires the original data and development environment.
 
 The bundle already contains the staged Docker context. Once those assets are present:
 
@@ -61,7 +62,7 @@ The output schema is `row_id,real_label`. See the [Docker README](armaterimi_doc
 
 ## Provenance
 
-Published from `armaterimi_submission(1).zip`. The original archive is retained separately and is not committed to Git.
+Published from `armaterimi_submission(1).zip`. The original archive is available as a [release attachment](https://github.com/cihatceliker/trendyol-teknofest-2026-armaterimi/releases/tag/submission); it is not committed to Git.
 
 ```text
 Archive SHA-256:
