@@ -1,0 +1,46 @@
+{
+ "head": "ordinal",
+ "cuts": [
+  0.9517520888815535,
+  1.0618680132196308
+ ],
+ "labels": [
+  "irrelevant",
+  "semi-relevant",
+  "relevant"
+ ],
+ "provenance": {
+  "fitted_on": "DEV half of public (3,750 rows, query-disjoint from HOLDOUT); HOLDOUT never read",
+  "scalar": "x = p_semi + 2*p_rel, sliced by two cuts (lean_infer._ordinal_scalar)",
+  "oof_global": 0.8533,
+  "oof_per_regime": 0.8506,
+  "why_global_not_regime": "Per-regime cuts are the pre-registered rule and average about +0.006 across the TY-ecomm family, but on THIS checkpoint the out-of-fold estimate prefers global by 0.0027 (0.8533 vs 0.8506). Two reasons to follow OOF here rather than the prior: (1) OOF is precisely the estimator designed not to reward overfitting the fitting half, and (2) global fits 2 parameters on 3,750 rows whereas per-regime fits 6, the smallest bin holding only 753 rows - strictly more exposure to DEV noise, which is the thing we are most trying to avoid.",
+  "inactive_regime_table": {
+   "regimes": {
+    "fashion": [
+     0.9904248989389298,
+     1.0098594713718334
+    ],
+    "other": [
+     0.9565248467059846,
+     1.0267301904394268
+    ],
+    "technical": [
+     0.9353882336616516,
+     1.0813077926635735
+    ]
+   },
+   "fashion_roots": [
+    "aksesuar",
+    "ayakkabı",
+    "giyim"
+   ],
+   "technical_roots": [
+    "bahçe & elektrikli el aletleri",
+    "banyo yapı & hırdavat",
+    "elektronik",
+    "otomobil & motosiklet"
+   ]
+  }
+ }
+}

@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>ArmaTerimi — Uygunluk Açıklayıcı</title>
+<style>
+  /* ---- tokens: light (default) ---- */
+  :root{
+    color-scheme: light;
+    --page:#e9ebef; --surface:#f7f8fa; --ink:#1f2430; --ink-2:#4b5563; --muted:#7a8391;
+    --grid:#dcdfe4; --border:rgba(31,36,48,.14); --baseline:#c0c6cf; --neutral:#e1e4e9;
+    --accent:#2a6fc9; --accent-ink:#1c5cab; --accent-soft:#e2ecf9;
+    --pos-rgb:42,120,214; --neg-rgb:227,73,72; --seq-rgb:42,120,214;
+    --c-rel:#0ca30c; --c-semi:#eda100; --c-irr:#d03b3b;
+    --f-title:#2a78d6; --f-brand:#eb6834; --f-category:#1baf7a; --f-gender:#eda100; --f-age:#e87ba4; --f-attr:#4a3aa7; --f-other:#9aa0a8;
+    --tok-alpha:.5; --shadow:0 1px 3px rgba(20,24,32,.06);
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --page:#141618; --surface:#1d2024; --ink:#e6e7e9; --ink-2:#b9bec6; --muted:#8a919c;
+    --grid:#2b2f35; --border:rgba(230,231,233,.14); --baseline:#4a5058; --neutral:#2a2e33;
+    --accent:#5598e7; --accent-ink:#86b6ef; --accent-soft:#1f2c3d;
+    --pos-rgb:85,152,231; --neg-rgb:230,103,103; --seq-rgb:85,152,231;
+    --c-rel:#3cb43c; --c-semi:#fab219; --c-irr:#e66767;
+    --f-title:#3987e5; --f-brand:#d95926; --f-category:#199e70; --f-gender:#c98500; --f-age:#d55181; --f-attr:#9085e9; --f-other:#6b7280;
+    --tok-alpha:.6; --shadow:none;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:var(--page); color:var(--ink);
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    height:100vh; overflow:hidden;               /* one page: the page itself never scrolls */
+    display:grid; grid-template-rows:auto 1fr auto;
+  }
+  .num{font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  h1{font-size:15px;font-weight:650;margin:0;letter-spacing:.1px;white-space:nowrap}
+  h2{font-size:11.5px;font-weight:650;margin:0 0 8px;color:var(--ink-2);letter-spacing:.35px;text-transform:uppercase;
+     display:flex;align-items:center;gap:6px}
+  h2 small{font-weight:450;color:var(--muted);text-transform:none;letter-spacing:0;font-size:11.5px}
+  h2 .sp{flex:1}
+  .hint{color:var(--muted);font-size:11.5px}
+  .err{color:var(--c-irr);font-size:12px}
+
+  /* ---- info tooltips (replace the long how-to paragraphs) ---- */
+  .info{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+        border:1px solid var(--border);color:var(--muted);font-size:10px;font-weight:600;cursor:help;position:relative;
+        text-transform:none;letter-spacing:0;font-style:normal}
+  .info:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .info::after{
+    content:attr(data-tip); position:absolute; left:0; top:20px; z-index:60; width:340px;
+    background:var(--ink); color:var(--page); font-weight:400; font-size:11.5px; line-height:1.5; letter-spacing:0;
+    padding:8px 10px; border-radius:7px; box-shadow:0 6px 20px rgba(0,0,0,.25); white-space:normal;
+    opacity:0; pointer-events:none; transform:translateY(-3px); transition:opacity .12s, transform .12s;
+  }
+  .info:hover::after{opacity:1;transform:none}
+  .info.right::after{left:auto;right:0}
+
+  /* ---- header ---- */
+  header{
+    display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--surface);
+    border-bottom:1px solid var(--grid);z-index:30;
+  }
+  header .sub{color:var(--muted);font-size:11px;margin-top:0;white-space:nowrap}
+  .combo{position:relative;flex:1;max-width:520px}
+  .combo input{
+    width:100%;padding:7px 12px 7px 32px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:13px;
+    background:var(--page);color:var(--ink);outline:none;
+  }
+  .combo input:focus{border-color:var(--accent);background:var(--surface)}
+  .combo .lens{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none}
+  .dropdown{
+    position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--grid);
+    border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);max-height:340px;overflow-y:auto;display:none;z-index:40;padding:4px;
+  }
+  .dropdown.open{display:block}
+  .ditem{padding:6px 10px;border-radius:7px;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:baseline}
+  .ditem:hover,.ditem.hi{background:var(--accent-soft)}
+  .ditem .dq{font-size:13px;color:var(--ink);white-space:normal}
+  .ditem .dr{font-size:10.5px;color:var(--muted)}
+  .dmeta{padding:4px 10px;color:var(--muted);font-size:11px}
+  .hbtn{
+    background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 11px;
+    font:600 12px/1 inherit;color:var(--ink-2);cursor:pointer;white-space:nowrap;
+  }
+  .hbtn:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;
+        border:1px solid var(--border);background:var(--surface);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+
+  /* ---- main grid ---- */
+  main{
+    display:grid;grid-template-columns:minmax(330px,29%) 1fr;gap:10px;padding:10px;min-height:0;
+  }
+  .col{display:grid;gap:10px;min-height:0}
+  .col.left{grid-template-rows:auto auto auto minmax(0,1fr)}
+  .robrows{display:flex;flex-direction:column}
+  .robrow{display:grid;grid-template-columns:104px 1fr auto auto;gap:8px;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--grid)}
+  .robrow:last-child{border-bottom:none}
+  .robname{color:var(--ink-2);text-align:right}
+  .robq{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--ink);white-space:normal;word-break:break-word}
+  .robsame{color:var(--muted);font-size:11px;white-space:nowrap}
+  .robdiff{color:var(--accent-ink);font-weight:600;font-size:11px;white-space:nowrap}
+  .col.right{grid-template-rows:auto minmax(0,auto) minmax(0,1fr)}
+  .card{
+    background:var(--surface);border:1px solid var(--grid);border-radius:14px;padding:12px 14px;
+    min-height:0;overflow:auto;box-shadow:var(--shadow);
+  }
+  .card.tight{padding:10px 12px}
+
+  /* ---- product editor ---- */
+  table.fields{border-collapse:collapse;width:100%;font-size:12.5px}
+  table.fields th{color:var(--muted);font-weight:500;text-align:left;padding:5px 10px 0 0;white-space:nowrap;vertical-align:top;width:1%}
+  table.fields td{padding:2px 0}
+  .pfield{
+    width:100%;padding:5px 9px;border:1px solid var(--border);border-radius:7px;font:12.5px/1.4 inherit;
+    background:var(--page);color:var(--ink);outline:none;resize:vertical;
+  }
+  .pfield:focus{border-color:var(--accent);background:var(--surface)}
+  textarea.pfield{min-height:30px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .linkish{background:none;border:none;color:var(--accent-ink);cursor:pointer;font:inherit;font-size:11.5px;padding:0}
+  .linkish:hover{text-decoration:underline}
+  .edited-flag{font-size:11px;color:#8a4b00;background:#fdf3df;border:1px solid #f2ddb0;border-radius:999px;padding:1px 9px;display:none}
+  :root[data-theme="dark"] .edited-flag{background:#3a2c12;border-color:#5a4520;color:#f0c06a}
+
+  textarea#qbox{
+    width:100%;min-height:46px;resize:vertical;padding:8px 11px;font:14.5px/1.4 inherit;
+    border:1px solid var(--border);border-radius:8px;background:var(--page);color:var(--ink);outline:none;
+  }
+  textarea#qbox:focus{border-color:var(--accent);background:var(--surface)}
+  .editrow{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  button.primary{
+    background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 20px;
+    font:600 13.5px/1 inherit;cursor:pointer;
+  }
+  button.primary:hover{filter:brightness(.93)}
+  button.primary:disabled{background:var(--baseline);cursor:default}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--baseline);
+        border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---- decision card ---- */
+  .decision{display:grid;grid-template-columns:auto minmax(220px,300px) 1fr;gap:18px;align-items:center}
+  .badge{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 16px;border-radius:10px;
+         border:1.5px solid;font-weight:650;font-size:16px;line-height:1.15}
+  .badge .en{font-weight:450;font-size:11.5px;color:var(--ink-2)}
+  .badge .dot{width:9px;height:9px;margin-right:6px}
+  .probs{display:flex;flex-direction:column;gap:4px}
+  .prow{display:grid;grid-template-columns:88px 1fr 46px;gap:8px;align-items:center;font-size:12px}
+  .prow .plabel{color:var(--ink-2);text-align:right}
+  .pbar{height:9px;background:var(--neutral);border-radius:4px;overflow:hidden}
+  .pbar>i{display:block;height:100%;border-radius:0 4px 4px 0}
+  .kv{font-size:11.5px;color:var(--muted)}
+  .kv b{color:var(--ink);font-weight:600}
+  #numline svg{width:100%;height:auto;display:block}
+  .summary{font-size:13.5px;line-height:1.55;color:var(--ink);margin-top:8px;padding-top:8px;border-top:1px solid var(--grid)}
+  .summary b{font-weight:650}
+  .truthbadge{margin-top:6px;padding:4px 9px;border-radius:6px;font-size:12px;display:inline-block}
+  .tb-ok{background:#e8f4ec;border:1px solid #b9dcc6;color:#1f6b42}
+  .tb-bad{background:#fdeceb;border:1px solid #f2c2be;color:#a33a33}
+  .tbtag{font-size:10px;font-weight:700;letter-spacing:.06em;background:var(--ink);color:var(--page);padding:1px 5px;border-radius:3px;margin-right:6px}
+
+  /* ---- word contributions ---- */
+  .heatlegend{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin:0 0 6px;flex-wrap:wrap}
+  .heatlegend .grad{width:150px;height:9px;border-radius:5px;border:1px solid var(--border);
+    background:linear-gradient(90deg,rgba(var(--neg-rgb),var(--tok-alpha)),var(--neutral) 50%,rgba(var(--pos-rgb),var(--tok-alpha)))}
+  .tokblock{margin-bottom:6px}
+  .tokblock .blab{font-size:10.5px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px}
+  .tokwrap{line-height:1.95;word-break:break-word;font-size:13px}
+  .tk{padding:2px 3px;border-radius:4px;cursor:default;color:var(--ink)}
+  .tk.subword{padding-left:0;border-top-left-radius:0;border-bottom-left-radius:0}
+  .fieldsep{color:var(--baseline);margin:0 3px}
+  .tokwrap.q .tk{font-size:14px;font-weight:600}
+
+  /* ---- field bars: label | track | value — the value has its own column, never overlaps ---- */
+  .fbars{display:flex;flex-direction:column;gap:6px}
+  .fbrow{display:grid;grid-template-columns:104px 1fr 58px;gap:8px;align-items:center;font-size:12px}
+  .fbrow .fl{color:var(--ink-2);text-align:right;white-space:nowrap}
+  .fbrow .fv{text-align:right;color:var(--ink-2);font-size:11.5px}
+  .fbtrack{position:relative;height:14px}
+  .fbaxis{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--baseline)}
+  .fbbar{position:absolute;top:2px;height:10px}
+
+  /* ---- counterfactuals ---- */
+  .cfgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+  .cfcol h3{font-size:11px;font-weight:600;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.3px}
+  .cfrows{display:flex;flex-direction:column;gap:5px}
+  .cfrow{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;border:1px solid var(--grid);
+         border-radius:8px;padding:6px 10px;font-size:12.5px;background:var(--page)}
+  .cfrow.flip{border-color:var(--accent);background:var(--accent-soft)}
+  .cfword{font-weight:650;text-decoration:line-through;text-decoration-color:rgb(var(--neg-rgb));text-decoration-thickness:1.5px}
+  .cfrow .what{white-space:normal;word-break:break-word}
+  .cfrow .kv{white-space:nowrap}
+  .minibadge{display:inline-flex;align-items:center;gap:5px;border:1px solid;border-radius:999px;padding:0 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .minibadge .dot{width:7px;height:7px}
+
+  /* ---- query→product map ---- */
+  .bottom{display:grid;grid-template-columns:minmax(300px,38%) 1fr;gap:10px;min-height:0}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+  .seg button{background:var(--surface);border:none;padding:3px 10px;font:11.5px inherit;color:var(--ink-2);cursor:pointer}
+  .seg button.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+  #attwrap{overflow:auto;padding-bottom:2px}
+  #attcanvas{display:block}
+  #atttip{position:fixed;pointer-events:none;background:var(--ink);color:var(--page);font-size:11.5px;
+          padding:5px 9px;border-radius:6px;display:none;z-index:70;max-width:280px}
+  .attlegend{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 6px;font-size:11px;color:var(--muted)}
+  .attkey{display:inline-flex;align-items:center;gap:4px}
+  .attkey i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  /* ---- footer + modal ---- */
+  footer{
+    display:flex;align-items:center;gap:14px;padding:5px 14px;background:var(--surface);border-top:1px solid var(--grid);
+    font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;
+  }
+  footer .grow{flex:1;overflow:hidden;text-overflow:ellipsis}
+  .modalbg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:80;align-items:center;justify-content:center}
+  .modalbg.open{display:flex}
+  .modal{background:var(--surface);color:var(--ink);border-radius:14px;width:min(900px,92vw);max-height:86vh;overflow:auto;
+         padding:18px 22px;box-shadow:0 20px 60px rgba(0,0,0,.35);font-size:12.5px;line-height:1.55}
+  .modal h3{margin:0 0 8px;font-size:13.5px}
+  .modal .close{float:right}
+  .nzpair{margin:6px 0 10px;font-size:12px;color:var(--ink-2);line-height:1.5}
+  .nztab{width:100%;border-collapse:collapse;font-size:11.5px}
+  .nztab th{text-align:left;font-weight:600;color:var(--muted);padding:2px 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  .nztab td{padding:3px 6px;vertical-align:top}
+  .nzf{font-weight:600;white-space:nowrap}
+  .nzold{color:#b8564f;text-decoration:line-through;text-decoration-color:#e3b3ae}
+  .nzarr{color:var(--muted)}
+  .nznew{color:#2e7d5b;font-weight:500}
+  .nzwhy{color:var(--muted);font-size:11px;font-style:italic;padding-bottom:6px;line-height:1.45}
+  .method{font-size:12px;color:var(--ink-2);border-top:1px solid var(--grid);padding-top:10px;margin-top:12px}
+  .method b{color:var(--ink)}
+  .placeholder{color:var(--muted);text-align:center;padding:30px 10px;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>ArmaTerimi · Uygunluk Açıklayıcı</h1>
+    <div class="sub">tahminleri üreten modelin kendi gerekçeleri — ayrı bir açıklayıcı model yok</div>
+  </div>
+  <div class="combo">
+    <span class="lens">⌕</span>
+    <input id="search" type="search" placeholder="Herkese açık test kümesinde ara: row_id, sorgu veya başlık…" autocomplete="off">
+    <div class="dropdown" id="dropdown"></div>
+  </div>
+  <button class="hbtn" id="randbtn" title="Herkese açık test kümesinden rastgele bir satır yükle">🎲 Rastgele</button>
+  <button class="hbtn" id="manualbtn" title="Alanları temizle, elle ürün + sorgu gir">✏️ Manuel</button>
+  <span class="pill" id="statuspill"><span class="dot" style="background:var(--c-semi)"></span><span id="statustext">Model yükleniyor…</span></span>
+  <button class="hbtn" id="themebtn" title="Açık / koyu tema">◐</button>
+</header>
+
+<main>
+  <!-- ================= left: input ================= -->
+  <div class="col left">
+    <div class="card tight" id="productcard">
+      <h2>Ürün <small class="mono" id="ridlab"></small><span class="sp"></span>
+        <span class="info right" data-tip="Her alan düzenlenebilir; değiştirip Açıkla’ya basınca aynı model yeniden skorlar. Model bu ham satırı değil normalize edilmiş hâlini görür (‘modele giden girdiyi göster’).">i</span></h2>
+      <table class="fields">
+        <tr><th>Başlık</th><td><textarea class="pfield" id="pf-title" rows="2" spellcheck="false"></textarea></td></tr>
+        <tr><th>Marka</th><td><input class="pfield" id="pf-brand" spellcheck="false"></td></tr>
+        <tr><th>Kategori</th><td><input class="pfield" id="pf-category" spellcheck="false"></td></tr>
+        <tr><th>Cinsiyet · yaş</th><td><div class="two">
+          <input class="pfield" id="pf-gender" spellcheck="false" placeholder="unknown">
+          <input class="pfield" id="pf-age" spellcheck="false" placeholder="unknown"></div></td></tr>
+        <tr><th>Nitelikler</th><td><textarea class="pfield" id="pf-attrs" rows="3" spellcheck="false"
+            placeholder="anahtar: değer, anahtar: değer, …"></textarea></td></tr>
+      </table>
+      <div style="margin-top:6px;display:flex;gap:12px;align-items:center">
+        <button class="linkish" id="normtoggle">modele giden girdiyi göster</button>
+        <span class="edited-flag" id="editedflag">alanlar düzenlendi</span>
+      </div>
+    </div>
+
+    <div class="card tight">
+      <h2>Sorgu <small>serbestçe düzenlenebilir</small></h2>
+      <textarea id="qbox" spellcheck="false" placeholder="kullanıcı arama sorgusu…"></textarea>
+      <div class="editrow">
+        <button class="primary" id="explainbtn">Açıkla</button>
+        <button class="linkish" id="resetq">yüklenen satıra dön</button>
+        <span class="hint" id="explainhint"></span>
+      </div>
+    </div>
+
+    <div class="card tight">
+      <h2>Alan katkıları <small>IG toplamı</small><span class="sp"></span>
+        <span class="info right" data-tip="Kelime katkılarının alan bazında toplamı. Sağ/mavi ‘ilgili’ yönü, sol/kırmızı ‘ilgisiz’ yönü. Çubukların toplamı alttaki Σkatkı’ya eşittir.">i</span></h2>
+      <div class="fbars" id="fieldbars"><div class="placeholder">Açıkla’ya basınca dolar.</div></div>
+    </div>
+
+    <div class="card tight">
+      <h2>Yazım sağlamlığı <small>sorgunun varyantları yeniden skorlandı</small><span class="sp"></span>
+        <span class="info right" data-tip="Sorgunun yazım varyantları, konteynerdeki ön-işlemeden geçirilip aynı modele verilir; satırda modelin gördüğü hâl yazılıdır (büyük harf küçültülür, Türkçe I → i olur). ‘değişti’ = etiket değişti.">i</span></h2>
+      <div class="robrows" id="robrows"><span class="hint">—</span></div>
+    </div>
+  </div>
+
+  <!-- ================= right: explanation ================= -->
+  <div class="col right">
+    <div class="card" id="decisioncard">
+      <h2>Karar <small id="elapsedlab"></small><span class="sp"></span>
+        <span class="info right" data-tip="Sınıflar sıralıdır (ilgisiz &lt; kısmen &lt; ilgili); skaler x = p(kısmen) + 2·p(ilgili) beklenen ilgililik düzeyidir. İki eşik bu doğruyu üç bölgeye böler; noktanın eşiğe yakınlığı kararın ne kadar kıl payı olduğudur. Konteynerdeki kuralın aynısı.">i</span></h2>
+      <div id="decisionbody">
+        <div class="placeholder">Üstteki kutudan bir satır arayın, <b>Rastgele</b>’ye basın ya da <b>Manuel</b> ile kendi ürününüzü yazın; sonra <b>Açıkla</b>.</div>
+      </div>
+    </div>
+
+    <div class="card" id="wordcard">
+      <h2>Kelime katkıları <small>Integrated Gradients — birincil açıklama</small><span class="sp"></span>
+        <span class="info right" data-tip="Her kelimenin skoru ne kadar ittiği. Taban, bütün kelimelerin [UNK] olduğu boş girdidir; model boş girdiye ~1,9 (ilgili) verir. Kırmızı = skoru o tabandan aşağı çeken karşı-kanıt, mavi = yukarı çeken kanıt. Bu yüzden kısmen/ilgisiz kararlarda çoğu kelime kırmızıdır.">i</span></h2>
+      <div class="heatlegend">
+        <span>ilgisiz yönü</span><span class="grad"></span><span>ilgili yönü</span>
+        <label style="margin-left:10px;cursor:pointer"><input type="checkbox" id="showpieces"> alt-parçalar</label>
+      </div>
+      <div class="tokblock"><div class="blab">Sorgu</div><div class="tokwrap q" id="qtokens"><span class="hint">—</span></div></div>
+      <div class="tokblock"><div class="blab">Ürün metni</div><div class="tokwrap" id="ptokens"><span class="hint">—</span></div></div>
+    </div>
+
+    <div class="bottom">
+      <div class="card tight">
+        <h2>Karşı-olgular <small>tek parça çıkar, yeniden skorla</small><span class="sp"></span>
+          <span class="info right" data-tip="Bir parça çıkarılır, model yeniden çalıştırılır. Vurgulu satır = etiket değişti, karar buna dayanıyor. Bir parça çıkınca skor genelde tabana (~1,9) doğru kayar; ‘kanıt gidince ilgili görünmesi’ bundandır.">i</span></h2>
+        <div class="cfgrid">
+          <div class="cfcol"><h3>Ürün tarafı</h3><div class="cfrows" id="cfproduct"><span class="hint">—</span></div></div>
+          <div class="cfcol"><h3>Sorgu tarafı</h3><div class="cfrows" id="cfquery"><span class="hint">—</span></div></div>
+        </div>
+      </div>
+
+      <div class="card tight">
+        <h2>Sorgu → ürün eşleşme haritası <small>modelin dikkati, kelime düzeyinde · destekleyici</small><span class="sp"></span>
+          <div class="seg"><button id="att-best" class="on">eşleşme katmanı</button><button id="att-last">son katmanlar</button><button id="att-roll">tüm katmanlar</button></div>
+          <span class="info right" data-tip="Her satır bir sorgu kelimesi, satır toplamı %100. Koyu hücre = o sorgu kelimesi ürünün o kelimesine daha çok baktı. ‘Eşleşme katmanı’: sorgu kelimelerinin en çok ayrıştığı katman (son katmanlar yapısal bakar, satırlar birbirine benzer). Destekleyici görünüm; birincil açıklama kelime katkılarıdır.">i</span></h2>
+        <div class="attlegend" id="attlegend"></div><div class="hint" id="attnote" style="margin:-2px 0 6px"></div>
+        <div id="attwrap"><span class="hint">—</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span class="grow" id="footline">BERTurk-128k çapraz-kodlayıcı, 12 katman, 184,3M parametre · tüm sayılar modelin kendi ileri/geri geçişlerinden</span>
+  <span id="completeness" class="num"></span>
+  <button class="linkish" id="detailsbtn">yöntem ve ön-işleme ayrıntıları</button>
+</footer>
+
+<div class="modalbg" id="modalbg">
+  <div class="modal">
+    <button class="linkish close" id="modalclose">kapat ✕</button>
+    <h3>Teknik kontroller</h3>
+    <div id="checks" class="nzpair"><i>Bir satır yükleyip Açıkla’ya basın.</i></div>
+    <h3 style="margin-top:14px">Modelin gerçekten gördüğü girdi</h3>
+    <div id="normbox"><i>Bir satır yükleyip Açıkla’ya basın.</i></div>
+    <div class="method" id="methodtext">
+      <b>Yöntem.</b> Açıklanan model, tahminleri üreten şampiyonun kendisidir; ön-işleme sunucu hattıyla birebir aynıdır.
+      Kelime katkıları: Integrated Gradients, gömme katmanında, hedef = karar skaleri x = p<sub>kısmen</sub> + 2·p<sub>ilgili</sub>,
+      taban = modelin [UNK] gömmesi, adımlar skorun değiştiği bölgeye uyarlanır. Karşı-olgular: tek parça çıkarılıp aynı modelle
+      yeniden skorlama. Eşleşme haritası: dikkat ağırlıkları, yalnızca destekleyici (Jain &amp; Wallace ’19; Wiegreffe &amp; Pinter ’19).
+    </div>
+  </div>
+</div>
+<div id="atttip"></div>
+
+<script>
+"use strict";
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = (v, d=3) => (v>=0?"+":"") + v.toFixed(d);
+const cssv = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const TR_LABEL = {"relevant":"İlgili","semi-relevant":"Kısmen ilgili","irrelevant":"İlgisiz"};
+const labelHex = lab => ({"relevant":cssv("--c-rel"),"semi-relevant":cssv("--c-semi"),"irrelevant":cssv("--c-irr")}[lab] || cssv("--muted"));
+const FIELD_TR = {query:"Sorgu kelimeleri",title:"Başlık",brand:"Marka",category:"Kategori",gender:"Cinsiyet",
+                  age_group:"Yaş grubu",attributes:"Nitelikler",sep:"Ayraçlar",special:"Özel"};
+const FIELD_VAR = {title:"--f-title",brand:"--f-brand",category:"--f-category",gender:"--f-gender",
+                   age_group:"--f-age",attributes:"--f-attr",sep:"--f-other",other:"--f-other"};
+const fieldColor = f => cssv(FIELD_VAR[f] || "--f-other");
+const PF = {title:"pf-title", brand:"pf-brand", category:"pf-category",
+            gender:"pf-gender", age_group:"pf-age", attributes:"pf-attrs"};
+// All API calls go through BASE, the directory the page was served from (works at "/" on ngrok
+// and behind a path-prefixing proxy). Never hardcode a leading slash.
+const BASE = (() => {
+  const p = location.pathname;
+  if (p.endsWith("/")) return p;
+  const last = p.slice(p.lastIndexOf("/") + 1);
+  return last.includes(".") ? p.slice(0, p.lastIndexOf("/") + 1) : p + "/";
+})();
+const U = p => BASE + p.replace(/^\//, "");
+async function jget(url){ const r = await fetch(U(url)); const j = await r.json();
+  if(!r.ok) throw new Error(j.error || r.status); return j; }
+
+const state = { rowId:null, raw:null, explain:null, attMode:"best", modelReady:false, autoExplained:false };
+
+/* ---------------- theme ---------------- */
+function applyTheme(t){
+  if(t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+  try{ if(t) localStorage.setItem("theme", t); else localStorage.removeItem("theme"); }catch(e){}
+  if(state.explain) renderExplain(state.explain, true);
+}
+try{ const t = localStorage.getItem("theme"); if(t === "dark") applyTheme(t); }catch(e){}
+$("themebtn").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") || "light";
+  applyTheme(cur === "dark" ? "light" : "dark");
+};
+
+/* ---------------- health polling ---------------- */
+async function pollHealth(){
+  try{
+    const h = await jget("/healthz");
+    if(h.model === "ready"){
+      state.modelReady = true;
+      $("statuspill").firstElementChild.style.background = "var(--c-rel)";
+      $("statustext").textContent = "Model hazır";
+      if(!state.autoExplained && state.raw){ state.autoExplained = true; explain(); }
+      return;
+    }
+    if(h.model === "error"){
+      $("statuspill").firstElementChild.style.background = "var(--c-irr)";
+      $("statustext").textContent = "Model yüklenemedi — sunucu günlüğüne bakın";
+      return;
+    }
+  }catch(e){ /* server not up yet */ }
+  setTimeout(pollHealth, 2000);
+}
+
+/* ---------------- search combobox (no list unless the user types) ---------------- */
+let searchTimer = null, ddRows = [], ddHi = -1;
+function closeDD(){ $("dropdown").classList.remove("open"); ddHi = -1; }
+async function searchRows(q){
+  if(!q){ closeDD(); return; }
+  const j = await jget("/api/rows?limit=12&q=" + encodeURIComponent(q));
+  ddRows = j.rows; ddHi = -1;
+  const dd = $("dropdown"); dd.innerHTML = "";
+  if(!j.rows.length){ dd.innerHTML = '<div class="dmeta">eşleşme yok</div>'; dd.classList.add("open"); return; }
+  j.rows.forEach((r, i) => {
+    const d = document.createElement("div");
+    d.className = "ditem";
+    d.innerHTML = `<span class="dq">${esc(r.query)}</span><span class="dr mono">${esc(r.row_id)}</span>`;
+    d.onmousedown = e => { e.preventDefault(); pick(i); };
+    dd.appendChild(d);
+  });
+  if(j.matched > j.rows.length)
+    dd.insertAdjacentHTML("beforeend", `<div class="dmeta">${j.matched} eşleşmeden ilk ${j.rows.length} gösteriliyor — aramayı daraltın</div>`);
+  dd.classList.add("open");
+}
+function pick(i){ const r = ddRows[i]; if(!r) return; closeDD(); $("search").value = ""; selectRow(r.row_id); }
+$("search").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  searchTimer = setTimeout(() => searchRows(q).catch(()=>{}), 220);
+});
+$("search").addEventListener("keydown", e => {
+  const items = $("dropdown").querySelectorAll(".ditem");
+  if(e.key === "Escape"){ closeDD(); return; }
+  if(e.key === "ArrowDown" || e.key === "ArrowUp"){
+    if(!items.length) return; e.preventDefault();
+    ddHi = (ddHi + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items.forEach((el,i) => el.classList.toggle("hi", i === ddHi));
+  }
+  if(e.key === "Enter"){ if(items.length){ pick(ddHi >= 0 ? ddHi : 0); } }
+});
+$("search").addEventListener("blur", () => setTimeout(closeDD, 120));
+document.addEventListener("click", e => { if(!e.target.closest(".combo")) closeDD(); });
+
+/* ---------------- fill / manual ---------------- */
+function fillRow(j){
+  state.rowId = j.row_id; state.raw = j.raw; state.explain = null;
+  $("ridlab").textContent = j.row_id;
+  for(const [f, id] of Object.entries(PF)) $(id).value = j.raw[f] || "";
+  $("qbox").value = j.raw.query || "";
+  $("normbox").innerHTML = preprocHtml(j);
+  flagEdited();
+}
+async function selectRow(rid){
+  try{ fillRow(await jget("/api/row/" + encodeURIComponent(rid))); if(state.modelReady) explain(); }
+  catch(e){ alert("Satır yüklenemedi: " + e.message); }
+}
+$("randbtn").onclick = async () => {
+  try{ fillRow(await jget("/api/random")); if(state.modelReady) explain(); }
+  catch(e){ alert("Rastgele satır yüklenemedi: " + e.message); }
+};
+$("manualbtn").onclick = () => {
+  state.rowId = null; state.raw = null; state.explain = null;
+  $("ridlab").textContent = "manuel giriş";
+  for(const id of Object.values(PF)) $(id).value = "";
+  $("pf-gender").value = "unknown"; $("pf-age").value = "unknown";
+  $("qbox").value = "";
+  $("normbox").innerHTML = "<i>Açıkla’ya bastığınızda normalize edilmiş girdi burada görünecek.</i>";
+  flagEdited();
+  $("pf-title").focus();
+};
+function openModal(){ $("modalbg").classList.add("open"); }
+$("normtoggle").onclick = openModal;
+$("detailsbtn").onclick = openModal;
+$("modalclose").onclick = () => $("modalbg").classList.remove("open");
+$("modalbg").addEventListener("click", e => { if(e.target === $("modalbg")) $("modalbg").classList.remove("open"); });
+document.addEventListener("keydown", e => { if(e.key === "Escape") $("modalbg").classList.remove("open"); });
+$("resetq").onclick = () => {
+  if(!state.raw) return;
+  for(const [f, id] of Object.entries(PF)) $(id).value = state.raw[f] || "";
+  $("qbox").value = state.raw.query || "";
+  flagEdited();
+};
+function collectFields(){
+  const out = { query: $("qbox").value };
+  for(const [f, id] of Object.entries(PF)) out[f] = $(id).value;
+  return out;
+}
+function flagEdited(){
+  let edited = false;
+  if(state.raw){
+    const cur = collectFields();
+    edited = Object.keys(PF).some(f => (cur[f]||"").trim() !== (state.raw[f]||"").trim()) ||
+             cur.query.trim() !== (state.raw.query||"").trim();
+  }
+  $("editedflag").style.display = edited ? "" : "none";
+}
+for(const id of Object.values(PF)) $(id).addEventListener("input", flagEdited);
+$("qbox").addEventListener("input", flagEdited);
+$("qbox").addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); explain(); } });
+
+/* ---------------- explain ---------------- */
+$("explainbtn").onclick = explain;
+let explaining = false;
+async function explain(){
+  if(explaining) return;
+  const fields = collectFields();
+  if(!fields.query.trim() && !fields.title.trim()){
+    $("explainhint").innerHTML = '<span class="err">En azından bir sorgu veya başlık girin.</span>';
+    return;
+  }
+  const btn = $("explainbtn");
+  explaining = true; btn.disabled = true;
+  $("explainhint").innerHTML = '<span class="spin"></span> model hesaplıyor…';
+  try{
+    const r = await fetch(U("/api/explain"), {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({row_id: state.rowId, query: fields.query, fields: fields})});
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    state.explain = j;
+    renderExplain(j);
+    $("explainhint").textContent = "";
+  }catch(e){
+    $("explainhint").innerHTML = '<span class="err">Hata: ' + esc(e.message) + '</span>';
+  }finally{ explaining = false; btn.disabled = false; }
+}
+
+/* ---------------- rendering ---------------- */
+let lastExplain = null;
+function renderExplain(j, rethemeOnly){
+  lastExplain = j;
+  renderDecision(j);
+  renderTokens(j);
+  renderFieldBars(j);
+  renderAttention(j);
+  renderCfProduct(j);
+  renderCfQuery(j);
+  renderRobust(j);
+  if(!rethemeOnly) $("normbox").innerHTML = preprocHtml(j);
+  $("completeness").textContent = `taban (tüm [UNK]) skor ${j.ig.f_baseline.toFixed(2)} → girdi ${j.ig.f_input.toFixed(2)} · Σkatkı ${j.ig.sum_attributions.toFixed(3)} (tamlık farkı ${j.ig.completeness_gap.toFixed(3)})`;
+  renderChecks(j);
+}
+
+function renderDecision(j){
+  const p = j.prediction, hex = labelHex(p.label);
+  let probs = "";
+  if(p.probs){
+    for(const lab of p.labels){
+      const v = p.probs[lab] ?? 0, hx = labelHex(lab);
+      probs += `<div class="prow"><span class="plabel">${esc(TR_LABEL[lab]||lab)}</span>` +
+        `<span class="pbar"><i style="width:${(v*100).toFixed(1)}%;background:${hx}"></i></span>` +
+        `<span class="num" style="color:var(--ink-2)">${(v*100).toFixed(1)}%</span></div>`;
+    }
+  }
+  const scalar = p.scalar.toFixed(4) + (p.scalar_kind === "ordinal" ? "" : " = p₍kısmen₎ + 2·p₍ilgili₎");
+  $("elapsedlab").textContent = (j.elapsed_ms/1000).toFixed(1) + " sn";
+  let truth = "";
+  if(j.truth){   // DEV ONLY — present only when the server was started with --truth; the delivered image never is
+    const ok = j.truth === p.label;
+    truth = `<div class="truthbadge ${ok?'tb-ok':'tb-bad'}"><span class="tbtag">DENEY</span> gerçek etiket: <b>${esc(TR_LABEL[j.truth]||j.truth)}</b> — model ${ok?"DOĞRU":"YANLIŞ"}</div>`;
+  }
+  $("decisionbody").innerHTML =
+    `<div class="decision">
+       <div>
+         <div class="badge" style="border-color:${hex};background:${hex}1f">
+           <span><span class="dot" style="background:${hex}"></span>${esc(TR_LABEL[p.label]||p.label)}</span>
+           <span class="en">${esc(p.label)}</span>
+         </div>
+         <div class="kv" style="margin-top:6px">skaler <b class="num">${scalar}</b></div>
+       </div>
+       <div class="probs">${probs}</div>
+       <div id="numline"></div>
+     </div>
+     <div class="summary" id="summaryline">${esc(j.summary_tr || "")}</div>${truth}`;
+  renderNumberLine(p);
+}
+
+/* number line: three zones, two cuts, marker for the scalar */
+function renderNumberLine(p){
+  const [c1, c2] = p.cuts, s = p.scalar;
+  const lo = 0, hi = 2;                       // the scalar lives in [0, 2]: fixed axis, comparable across rows
+  const W = 640, H = 96, L = 24, R = W-24, y = 52;
+  const X = v => L + (v-lo)/(hi-lo)*(R-L);
+  const zone = (a,b,color,tr) => {
+    const xa = X(a), xb = X(b);
+    return `<rect x="${xa}" y="${y-13}" width="${xb-xa}" height="26" fill="${color}" opacity="0.16" rx="3"/>` +
+      `<text x="${(xa+xb)/2}" y="${y-21}" text-anchor="middle" font-size="11" style="fill:var(--ink-2)">${tr}</text>`;
+  };
+  const cut = (c,name,anchor,dx) =>
+    `<line x1="${X(c)}" y1="${y-16}" x2="${X(c)}" y2="${y+16}" style="stroke:var(--ink)" stroke-width="1.3" stroke-dasharray="3 3"/>` +
+    `<text x="${X(c)+dx}" y="${y+30}" text-anchor="${anchor}" font-size="10.5" style="fill:var(--muted)">${name} = ${c.toFixed(2)}</text>`;
+  const nearest = Math.abs(s-c1) < Math.abs(s-c2) ? ["e₁", s-c1] : ["e₂", s-c2];
+  const sx = Math.max(L+34, Math.min(R-34, X(s)));          // score label
+  const dx = Math.max(L+118, Math.min(R-118, X(s)));        // wider "distance" label
+  $("numline").innerHTML =
+`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="karar sayı doğrusu">
+  <line x1="${L}" y1="${y}" x2="${R}" y2="${y}" style="stroke:var(--baseline)" stroke-width="1.5"/>
+  ${zone(lo, c1, labelHex("irrelevant"), "İlgisiz")}
+  ${zone(c1, c2, labelHex("semi-relevant"), "Kısmen ilgili")}
+  ${zone(c2, hi, labelHex("relevant"), "İlgili")}
+  ${cut(c1, "e₁", "end", -4)} ${cut(c2, "e₂", "start", 4)}
+  <circle cx="${X(s)}" cy="${y}" r="6.5" fill="${labelHex(p.label)}" style="stroke:var(--surface)" stroke-width="2"/>
+  <text x="${sx}" y="${y-34}" text-anchor="middle" font-size="12" font-weight="650" style="fill:var(--ink)">skor = ${s.toFixed(3)}</text>
+  <text x="${dx}" y="${H-4}" text-anchor="middle" font-size="10.5" style="fill:var(--ink-2)">en yakın eşiğe uzaklık: ${fmt(nearest[1],3)} (${nearest[0]})</text>
+</svg>`;
+}
+
+/* diverging token background: blue = toward relevant, red = toward irrelevant */
+function heatColor(v, vmax){
+  if(vmax <= 0) return "transparent";
+  const a = Math.min(Math.abs(v)/vmax, 1) * parseFloat(cssv("--tok-alpha") || ".55");
+  return v >= 0 ? `rgba(${cssv("--pos-rgb")},${a.toFixed(3)})` : `rgba(${cssv("--neg-rgb")},${a.toFixed(3)})`;
+}
+function tokenSpan(t, vmax){
+  // Word rows carry n_pieces and clean surface text. Sub-word rows: sentencepiece marks word
+  // STARTS with "▁"; WordPiece (the shipped BERTurk) marks CONTINUATIONS with "##".
+  const isWord = t.n_pieces !== undefined;
+  const isWP = !isWord && t.text.startsWith("##");
+  const wordStart = isWord ? true : (t.text.startsWith("▁") || !isWP);
+  const shown = isWord ? t.text : (t.text.startsWith("▁") ? t.text.slice(1) : (isWP ? t.text.slice(2) : t.text));
+  const tip = `${t.text} · ${FIELD_TR[t.field]||t.field} · IG ${fmt(t.ig,4)}`
+            + (isWord && t.n_pieces > 1 ? ` · ${t.n_pieces} alt-parça toplamı` : "");
+  return `${wordStart?' ':''}<span class="tk${wordStart?'':' subword'}" style="background:${heatColor(t.ig,vmax)}" title="${esc(tip)}">${esc(shown)}</span>`;
+}
+function renderTokens(j){
+  const pieces = $("showpieces").checked;
+  const src = (!pieces && j.words && j.words.length) ? j.words : j.tokens;
+  const toks = src.filter(t => !t.special);
+  const vmax = Math.max(1e-9, ...toks.map(t => Math.abs(t.ig)));
+  const qs = toks.filter(t => t.seq === 0), ps = toks.filter(t => t.seq === 1);
+  $("qtokens").innerHTML = qs.map(t => tokenSpan(t, vmax)).join("").trim() || "<span class='hint'>—</span>";
+  let html = "";
+  for(const t of ps){
+    if(t.field === "sep" && t.text.replace(/▁/g,"").trim() === "|"){ html += ' <span class="fieldsep">|</span>'; continue; }
+    html += tokenSpan(t, vmax);
+  }
+  $("ptokens").innerHTML = html.trim();
+}
+
+function renderFieldBars(j){
+  const rows = j.ig.fields.filter(f => f.field !== "special" && f.field !== "sep");
+  const other = j.ig.fields.filter(f => f.field === "sep" || f.field === "special").reduce((a,f) => a + f.total, 0);
+  if(Math.abs(other) > 1e-4) rows.push({field:"sep", total:other});
+  const vmax = Math.max(1e-9, ...rows.map(r => Math.abs(r.total)));
+  const el = $("fieldbars"); el.innerHTML = "";
+  const grp = t => `<div class="hint" style="margin:2px 0 0;text-transform:uppercase;letter-spacing:.35px;font-size:10px">${t}</div>`;
+  const ordered = [...rows.filter(r => r.field === "query"), null, ...rows.filter(r => r.field !== "query")];
+  el.insertAdjacentHTML("beforeend", grp("Sorgu (çapraz-kodlayıcı girdisinin sol yarısı)"));
+  for(const r of ordered){
+    if(r === null){ el.insertAdjacentHTML("beforeend", grp("Ürün alanları")); continue; }
+    const w = Math.abs(r.total)/vmax * 50, pos = r.total >= 0;
+    const bar = pos
+      ? `left:50%;width:${w}%;background:rgba(${cssv("--pos-rgb")},.85);border-radius:0 4px 4px 0`
+      : `right:50%;width:${w}%;background:rgba(${cssv("--neg-rgb")},.85);border-radius:4px 0 0 4px`;
+    el.insertAdjacentHTML("beforeend",
+      `<div class="fbrow" title="${esc(FIELD_TR[r.field]||r.field)}: ${fmt(r.total,4)}"><span class="fl">${esc(FIELD_TR[r.field]||r.field)}</span>` +
+      `<span class="fbtrack"><span class="fbaxis"></span><span class="fbbar" style="${bar}"></span></span>` +
+      `<span class="fv num">${fmt(r.total,3)}</span></div>`);
+  }
+}
+
+/* ---------------- query → product map (canvas, sequential single hue) ---------------- */
+$("att-best").onclick = () => { state.attMode="best"; segSel(); if(state.explain) renderAttention(state.explain); };
+$("att-last").onclick = () => { state.attMode="last"; segSel(); if(state.explain) renderAttention(state.explain); };
+$("att-roll").onclick = () => { state.attMode="roll"; segSel(); if(state.explain) renderAttention(state.explain); };
+function segSel(){
+  for(const m of ["best","last","roll"]) $("att-"+m).classList.toggle("on", state.attMode===m);
+}
+document.addEventListener("change", e => {
+  if(e.target && e.target.id === "showpieces" && lastExplain) renderTokens(lastExplain);
+});
+let attGeom = null;
+function renderAttention(j){
+  const A = j.attention;
+  const M = state.attMode === "best" ? (A.matrix_best || A.matrix_last) : state.attMode === "last" ? A.matrix_last : A.matrix_rollout;
+  const dist = state.attMode === "best" ? A.distinct_best : state.attMode === "last" ? A.distinct_last : A.distinct_rollout;
+  $("att-best").textContent = A.best_layer ? `eşleşme katmanı (L${A.best_layer})` : "eşleşme katmanı";
+  $("attnote").textContent = (dist !== undefined && dist < 0.03)
+    ? "Bu görünümde sorgu satırları birbirine çok benziyor: dikkat burada kelimeye değil yapıya bakıyor."
+    : "";
+  const nq = A.query_tokens.length, np = A.product_tokens.length;
+  const wrap = $("attwrap");
+  if(!nq || !np){ wrap.innerHTML = "<span class='hint'>gösterilecek eşleşme yok</span>"; attGeom = null; return; }
+  const FORDER = ["title","brand","category","gender","age_group","attributes"];
+  $("attlegend").innerHTML = FORDER.map(f => `<span class="attkey"><i style="background:${fieldColor(f)}"></i>${FIELD_TR[f]}</span>`).join("");
+  // Word-level: attention is additive over positions, so summing a word's sub-word pieces is exact.
+  const W = A.words || j.words || [], qw = A.query_word_idx, pw = A.product_word_idx;
+  const have = qw && pw && W.length;
+  const qKeys=[], qLab=[], qMap=new Map();
+  for(let r=0;r<nq;r++){ const k = have?qw[r]:r; if(k<0) continue;
+    if(!qMap.has(k)){ qMap.set(k,qKeys.length); qKeys.push(k); qLab.push(have?W[k].text:A.query_tokens[r].replace(/▁/g,"")); } }
+  const pKeys=[], pLab=[], pFld=[], pMap=new Map();
+  for(let c=0;c<np;c++){ const k = have?pw[c]:c; const f=A.product_fields[c]||"other";
+    if(f==="sep" || k<0) continue;
+    if(!pMap.has(k)){ pMap.set(k,pKeys.length); pKeys.push(k); pLab.push(have?W[k].text:A.product_tokens[c].replace(/▁/g,"")); pFld.push(f); } }
+  const R=qLab.length, C=pLab.length;
+  if(!R || !C){ wrap.innerHTML="<span class='hint'>gösterilecek eşleşme yok</span>"; attGeom=null; return; }
+  const Z=Array.from({length:R},()=>new Float64Array(C));
+  for(let r=0;r<nq;r++){ const ri = have?qMap.get(qw[r]):qMap.get(r); if(ri===undefined) continue;
+    for(let c=0;c<np;c++){ const ci = have?pMap.get(pw[c]):pMap.get(c); if(ci===undefined) continue; Z[ri][ci]+=M[r][c]; } }
+  for(let r=0;r<R;r++){ let t=0; for(let c=0;c<C;c++) t+=Z[r][c]; if(t>0) for(let c=0;c<C;c++) Z[r][c]/=t; }
+
+  if(!$("attcanvas")) wrap.innerHTML = '<canvas id="attcanvas"></canvas>';
+  const cv=$("attcanvas"), dpr=window.devicePixelRatio||1;
+  const avail=Math.max(wrap.clientWidth-8,300);
+  const g0=$("attcanvas").getContext("2d"); g0.font="10.5px system-ui";
+  const longest=Math.max(...pLab.map(t=>g0.measureText(t).width));
+  const labL=Math.min(160, 24+Math.max(...qLab.map(t=>{g0.font="600 12px system-ui"; return g0.measureText(t).width;}))),
+        cw=Math.max(14,Math.min(46,Math.floor((avail-labL)/C))), ch=30;
+  const labTop=Math.ceil(longest*0.87)+22, band=5;
+  const Wd=labL+cw*C+8, H=labTop+ch*R+8;
+  cv.width=Wd*dpr; cv.height=H*dpr; cv.style.width=Wd+"px"; cv.style.height=H+"px";
+  const g=cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,Wd,H);
+  const seq = cssv("--seq-rgb"), ink = cssv("--ink-2"), neutral = cssv("--neutral");
+  let vmax=1e-9; for(const row of Z) for(const v of row) vmax=Math.max(vmax,v);
+  for(let r=0;r<R;r++) for(let c=0;c<C;c++){
+    const a=Math.pow(Z[r][c]/vmax,0.65);
+    g.fillStyle=neutral; g.fillRect(labL+c*cw+1, labTop+r*ch+1, cw-2, ch-2);
+    g.fillStyle=`rgba(${seq},${(0.9*a).toFixed(3)})`; g.fillRect(labL+c*cw+1, labTop+r*ch+1, cw-2, ch-2);
+  }
+  for(let c=0;c<C;c++){ g.fillStyle=fieldColor(pFld[c]); g.fillRect(labL+c*cw+1, labTop-band-3, cw-2, band); }
+  g.fillStyle=ink; g.font="600 12px system-ui"; g.textAlign="right"; g.textBaseline="middle";
+  for(let r=0;r<R;r++){ g.fillText(qLab[r], labL-8, labTop+r*ch+ch/2); }
+  g.textAlign="left"; g.font="10.5px system-ui";
+  for(let c=0;c<C;c++){ const t=pLab[c];
+    g.save(); g.translate(labL+c*cw+cw/2+3, labTop-band-7); g.rotate(-Math.PI/3); g.fillStyle=ink; g.fillText(t,0,0); g.restore(); }
+  attGeom={labL,labTop,cw,ch,nq:R,np:C,M:Z,qLab,pLab,pFld};
+  cv.onmousemove = e => {
+    const rect = cv.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const c = Math.floor((x - attGeom.labL) / attGeom.cw), r = Math.floor((y - attGeom.labTop) / attGeom.ch);
+    const tip = $("atttip");
+    if(r>=0 && r<attGeom.nq && c>=0 && c<attGeom.np){
+      tip.innerHTML = `<b>${esc(attGeom.qLab[r])}</b> → ${esc(attGeom.pLab[c])} <span style="opacity:.7">(${esc(FIELD_TR[attGeom.pFld[c]]||"")})</span><br>`
+        + `bu sorgu kelimesinin dikkat payı: <b>%${(100*attGeom.M[r][c]).toFixed(1)}</b>`;
+      tip.style.display = "block";
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - 260) + "px";
+      tip.style.top = (e.clientY + 14) + "px";
+    } else tip.style.display = "none";
+  };
+  cv.onmouseleave = () => { $("atttip").style.display = "none"; };
+}
+
+/* ---------------- preprocessing diff (modal) ---------------- */
+const NORM_WHY = {
+  gender: "T4 — 'çocuk' ve 'unisex' değerleri organizatörün iki ayrı katalog dışa-aktarımından gelen bir yapaylıktır " +
+          "(eğitimde 'çocuk' 16.634 satırın tamamında kısmen-ilgili), testte ise %43 ilgisiz / %30 ilgili. Nötrlendi.",
+  attributes: "v2 nitelik temizliği — sızdıran anahtarlar (60 adet) ve bilgi taşımayan kalıp değerler atıldı.",
+  title: "T1 — Unicode NFC + hatalı birleşen nokta (U+0307) temizliği.",
+  category: "T1 — Unicode NFC normalizasyonu.",
+  brand: "T1 — Unicode NFC normalizasyonu.",
+  age_group: "T1 — Unicode NFC normalizasyonu.",
+  query: "T1 — Unicode NFC + hatalı birleşen nokta temizliği."
+};
+function preprocHtml(j){
+  const raw = j.raw, nz = j.normalized || {};
+  let rows = "";
+  if(raw){
+    for(const k of ["query","title","brand","category","gender","age_group","attributes"]){
+      const a = (raw[k]||""), b = (nz[k]||"");
+      if(a === b) continue;
+      const why = NORM_WHY[k] || "normalize.py";
+      rows += `<tr><td class="nzf">${esc(k==="query"?"Sorgu":(FIELD_TR[k]||k))}</td>`
+           +  `<td class="nzold">${esc(a) || "<i>boş</i>"}</td>`
+           +  `<td class="nzarr">→</td>`
+           +  `<td class="nznew">${esc(b) || "<i>boş</i>"}</td></tr>`
+           +  `<tr><td></td><td colspan="3" class="nzwhy">${esc(why)}</td></tr>`;
+    }
+  }
+  const diff = rows
+    ? `<table class="nztab"><tr><th></th><th>ham katalog değeri</th><th></th><th>modele giden</th></tr>${rows}</table>`
+    : `<div class="nzwhy">Bu satırda ön-işleme hiçbir alanı değiştirmedi.</div>`;
+  const pair = j.query_used !== undefined
+    ? `<div class="nzpair">sorgu: “${esc(j.query_used)}”<br>ürün: “${esc(j.doc)}”</div>` : "";
+  return pair + diff;
+}
+
+/* ---------------- counterfactual rows ---------------- */
+function cfRow(r, flip, prefix){
+  const hx = labelHex(r.label);
+  return `<div class="cfrow${flip?' flip':''}" title="${esc(r.removed)} çıkarılınca skor ${r.scalar.toFixed(3)} (Δ ${fmt(r.delta_scalar,3)})">
+    <span class="what">${prefix}<span class="cfword">${esc(r.removed)}</span></span>
+    <span class="minibadge" style="border-color:${hx};background:${hx}1a"><span class="dot" style="background:${hx}"></span>${esc(TR_LABEL[r.label]||r.label)}</span>
+    <span class="kv num">${r.scalar.toFixed(2)} <span style="opacity:.8">(${fmt(r.delta_scalar,2)})</span></span>
+  </div>`;
+}
+function renderCfBlock(el, cf, prefix, emptyMsg, stableMsg, maxRows){
+  el.innerHTML = "";
+  if(!cf || !cf.n_variants){ el.innerHTML = `<span class="hint">${emptyMsg}</span>`; return; }
+  const rows = [...cf.flips.map(r => [r,true]), ...cf.top_deltas.filter(r => !r.flips).map(r => [r,false])];
+  if(!cf.flips.length) el.insertAdjacentHTML("beforeend", `<div class="hint" style="margin-bottom:2px">${stableMsg}</div>`);
+  else el.insertAdjacentHTML("beforeend", `<div class="hint" style="margin-bottom:2px">etiketi değiştirenler vurgulu (${cf.flips.length})</div>`);
+  for(const [r, flip] of rows.slice(0, maxRows)) el.insertAdjacentHTML("beforeend", cfRow(r, flip, prefix));
+  if(rows.length > maxRows) el.insertAdjacentHTML("beforeend", `<div class="hint">+${rows.length-maxRows} daha</div>`);
+}
+function renderCfProduct(j){
+  renderCfBlock($("cfproduct"), j.counterfactuals && j.counterfactuals.product, "",
+    "Çıkarılabilir ürün bölümü yok.", "hiçbir tek çıkarma etiketi değiştirmiyor — en çok oynatanlar:", 6);
+}
+function renderCfQuery(j){
+  renderCfBlock($("cfquery"), j.counterfactuals && j.counterfactuals.query_words, "sorgudan ",
+    "Sorgu tek kelimelik; silme varyantı yok.", "hiçbir tek kelime silme etiketi değiştirmiyor — en çok oynatanlar:", 6);
+}
+
+function renderChecks(j){
+  const f = j.faithfulness || {}, m = j.method_agreement || {};
+  const rows = [];
+  rows.push(`<b>Tamlık (IG aksiyomu):</b> taban skoru ${j.ig.f_baseline.toFixed(4)}, girdi skoru ${j.ig.f_input.toFixed(4)}, fark ${(j.ig.f_input-j.ig.f_baseline).toFixed(4)}; katkı toplamı ${j.ig.sum_attributions.toFixed(4)} (sapma ${j.ig.completeness_gap.toFixed(4)}, ${j.ig.steps} adım).`);
+  if(f.k !== undefined){
+    const big = Math.max(Math.abs(f.drop_top), Math.abs(f.drop_random));
+    let verdict;
+    if(big < 0.05) verdict = "İki değişim de küçük (≤0,05): skor bu satırda doygun, silme testi ayırt edici değil.";
+    else if(Math.abs(f.drop_top) > 2*Math.abs(f.drop_random)) verdict = "IG sıralaması rastgeleden açıkça güçlü: atıflar gerçek.";
+    else verdict = "IG sıralaması rastgeleden ayrışmıyor: bu satırda atıflar zayıf.";
+    rows.push(`<b>Sadakat (silme testi):</b> en güçlü ${f.k} IG kelimesi silinince skor ${fmt(f.drop_top,3)}, rastgele ${f.k} kelime silinince ${fmt(f.drop_random,3)} değişti. ${verdict}`);
+  }
+  if(m.spearman !== undefined){
+    const cf = (j.counterfactuals && j.counterfactuals.product && j.counterfactuals.product.top_deltas) || [];
+    const maxd = Math.max(0, ...cf.map(r => Math.abs(r.delta_scalar)));
+    const note = maxd < 0.05
+      ? "Alan çıkarmalarının hiçbiri skoru 0,05’ten fazla oynatmıyor: karar birden çok alana yayılmış, sıralama karşılaştırması bu satırda anlamlı değil."
+      : "IG ‘boş girdiden bu girdiye’ yolu boyunca pay dağıtır; çıkarma ise ‘diğerleri dururken bu alan giderse’ sorusunu sorar. Uyum yüksekse iki yöntem aynı alanı işaret ediyor.";
+    rows.push(`<b>Yöntem uyumu:</b> IG alan sıralaması ile çıkarma sıralamasının Spearman uyumu ${Number(m.spearman).toFixed(2)} (${m.n_fields} alan). ${note}`);
+  }
+  $("checks").innerHTML = rows.map(r => `<div style="margin-bottom:6px">${r}</div>`).join("");
+}
+function renderRobust(j){
+  const el = $("robrows"); const R = j.robustness || [];
+  if(!R.length){ el.innerHTML = "<span class='hint'>Sorgu için varyant üretilmedi.</span>"; return; }
+  el.innerHTML = R.map(r => {
+    const hx = labelHex(r.label);
+    return `<div class="robrow" title="skor ${r.scalar.toFixed(3)} (Δ ${fmt(r.delta,3)})">
+      <span class="robname">${esc(r.name)}</span><span class="robq">${esc(r.query)}</span>
+      <span class="minibadge" style="border-color:${hx};background:${hx}1a"><span class="dot" style="background:${hx}"></span>${esc(r.label_tr||TR_LABEL[r.label]||r.label)}</span>
+      <span class="${r.same?'robsame':'robdiff'}">${r.normalized_away ? "ön-işleme eşitledi" : (r.same ? "aynı" : "değişti")}</span></div>`;
+  }).join("");
+}
+
+/* ---------------- boot: load a random public row so the page is never empty ---------------- */
+pollHealth();
+jget("/api/random").then(fillRow).catch(() => {});
+window.addEventListener("resize", () => { if(state.explain) renderAttention(state.explain); });
+</script>
+</body>
+</html>

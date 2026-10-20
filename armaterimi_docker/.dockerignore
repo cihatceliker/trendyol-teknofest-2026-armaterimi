@@ -1,0 +1,38 @@
+# keep the build context = exactly what the Dockerfile COPYs
+# (requirements.txt, models/current/, src/, explain/, vendor/ngrok, entrypoint.sh)
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv*/
+jury_out/
+README.md
+build_docker.sh
+prepare_context.sh
+test_like_jury.sh
+run_solution.sh
+run_explainability.sh
+.dockerignore
+models/STAGING_MANIFEST.txt
+# no data files in the image, ever
+*.parquet
+**/*.parquet
+*.csv
+**/*.csv
+# never let a credential slip into a layer
+**/openrouter*
+**/ngrok*
+**/token
+**/.netrc
+**/.huggingface/
+**/*.pem
+.env*
+# ---- explicit re-includes (negations win over the blocks above) ----
+# the vendored, sha-pinned ngrok agent binary - the ONLY ngrok-named files
+# allowed into the image (build_docker.sh verifies the sha and that vendor/
+# holds nothing else; the token never has a file anywhere near this context)
+!vendor/ngrok
+!vendor/ngrok.sha256
+# frozen preprocessing KEY LISTS for the explainability app (not data rows)
+!explain/common/drop_keys.csv
+!explain/e18_attr_clean/drop_keys_v2.csv

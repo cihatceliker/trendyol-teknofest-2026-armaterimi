@@ -1,0 +1,234 @@
+"""E15 train_student — distill the Asure-12B teacher into a BERTurk-128k cross-encoder.
+
+Extends the e07 pilot recipe (same text pair serialization: query vs
+"title | brand | category | gender age_group | attributes") with the distillation loss of
+model_survey/B1 §10 (soft targets beat hard labels; volume is the binding constraint):
+
+  per row:  L = alpha * CE(hard label, label_smoothing=SMOOTH, class weights CW)   [if hard]
+              + beta  * T^2 * softCE(teacher probs tempered at T || student logits/T) [if teacher]
+  a row missing one signal uses the other at FULL weight (alpha/beta -> 1.0 for that row).
+  softCE(q, s) = -sum q * log_softmax(s/T) == KL(q || softmax(s/T)) + const(q): same gradients,
+  cheaper. Teacher probs are tempered as q_i ∝ p_i^(1/T) (the teacher emits probs, not logits).
+
+Batching: length-grouped batches via e11's token-budget planner (si_common.train_plan) —
+BUDGET=0 (default) degenerates it to fixed-size BS batches cut from length-sorted pools
+(B1 §3: bucketing ~2x over pad-to-256); BUDGET>0 switches to true token-budget batches.
+bf16 autocast WITHOUT GradScaler (bf16 needs none — e07's GradScaler+bf16 was a no-op).
+AdamW(wd 0.01), linear-warmup(5%)-cosine, grad clip 1.0, seed 42. Not resumable by design
+(runs are ~15-60 min); checkpoint at END only.
+
+Checkpoint outputs/ckpt_<TAG>/ is simultaneously HF format (save_pretrained) AND the lean
+e12 format: model.safetensors + config.json + tokenizer.json + decision.json — the same file
+set e12_lean_infer/scripts/verify_parity.py exports (that script is a top-level parity
+harness, not an importable exporter, so the three export lines are mirrored here). Verify
+parity on CPU afterwards with:
+  MODEL=<ckpt_dir> OUT=<ckpt_dir>_parity N=200 .venv-gcp/bin/python \
+      asya/s2_exp/e12_lean_infer/scripts/verify_parity.py
+
+Env: MODEL (dbmdz/bert-base-turkish-128k-cased) DATA TAG OUT EPOCHS(2) BS(64) LR(3e-5)
+     MAXLEN(256) TEMP(2.0) ALPHA(0.5) BETA(0.5) SMOOTH(0.05) CW(auto|none|w_i,w_s,w_r)
+     BUDGET(0) ROWS(0=all) LOG_EVERY(200) NW(2 dataloader workers) DEVICE(cuda; cpu needs --smoke)
+CLI: --smoke -> ROWS=512 EPOCHS=1 LOG_EVERY=2 (plumbing check; CPU allowed)
+"""
+import os, sys, json, time, math
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+import numpy as np, pandas as pd, torch, torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+
+W = "/home/jupyter/trendyol-teknofest-work"
+sys.path.insert(0, f"{W}/asya/s2_exp/common")
+sys.path.insert(0, f"{W}/asya/s2_exp/e11_si_lora/scripts")
+from si_common import log, sha256, train_plan
+
+E15    = f"{W}/asya/s2_exp/e15_student"
+SMOKE  = "--smoke" in sys.argv
+MODEL  = os.environ.get("MODEL", "dbmdz/bert-base-turkish-128k-cased")
+DATA   = os.environ.get("DATA", f"{E15}/outputs/student_train.parquet")
+TAG    = os.environ.get("TAG", "smoke" if SMOKE else "s1")
+OUT    = os.environ.get("OUT", f"{E15}/outputs")
+EPOCHS = int(os.environ.get("EPOCHS", 1 if SMOKE else 2))
+BS     = int(os.environ.get("BS", 64))
+LR     = float(os.environ.get("LR", 3e-5))
+MAXLEN = int(os.environ.get("MAXLEN", 256))
+TEMP   = float(os.environ.get("TEMP", 2.0))
+ALPHA  = float(os.environ.get("ALPHA", 0.5))
+BETA   = float(os.environ.get("BETA", 0.5))
+SMOOTH = float(os.environ.get("SMOOTH", 0.05))
+CW     = os.environ.get("CW", "auto")
+BUDGET = int(os.environ.get("BUDGET", 0))          # 0 = fixed BS from length-sorted pools
+ROWS   = int(os.environ.get("ROWS", 512 if SMOKE else 0))
+LOG_E  = int(os.environ.get("LOG_EVERY", 2 if SMOKE else 200))
+NW     = int(os.environ.get("NW", 2))
+DEVICE = os.environ.get("DEVICE", "cuda")
+SEED = int(os.environ.get("SEED", "42"))
+AUX_SI = float(os.environ.get("AUX_SI", "0"))    # weight of the auxiliary semi-vs-irrelevant BCE
+WARMUP, WD, CLIP = 0.05, 0.01, 1.0
+L2I = {"irrelevant": 0, "semi-relevant": 1, "relevant": 2}
+
+torch.manual_seed(SEED); np.random.seed(SEED)
+if DEVICE == "cuda":
+    assert torch.cuda.is_available(), "no CUDA — for a CPU plumbing check use --smoke DEVICE=cpu"
+else:
+    assert SMOKE, "DEVICE=cpu is a smoke-only escape hatch; real runs are GPU"
+AMP = DEVICE == "cuda"                              # bf16 autocast, NO GradScaler (bf16 needs none)
+
+# ---------------------------------------------------------------- data + targets
+df = pd.read_parquet(DATA); DATA_SHA = sha256(DATA)
+if ROWS: df = df.sample(n=min(ROWS, len(df)), random_state=SEED).reset_index(drop=True)
+has_hard = df.real_label.isin(L2I).to_numpy()
+has_teacher = df.p_irr.notna().to_numpy() if "p_irr" in df else np.zeros(len(df), bool)
+assert (has_hard | has_teacher).all(), "row with neither hard label nor teacher probs"
+Y = np.where(has_hard, df.real_label.map(L2I).fillna(0).astype(np.int64), -1)
+QT = np.zeros((len(df), 3), np.float32)             # tempered teacher targets q ∝ p^(1/T)
+if has_teacher.any():
+    P = df.loc[has_teacher, ["p_irr", "p_semi", "p_rel"]].to_numpy(np.float32)
+    q = np.clip(P, 1e-8, None) ** (1.0 / TEMP)
+    QT[has_teacher] = q / q.sum(1, keepdims=True)
+if CW == "auto":                                    # inverse-frequency over hard-label rows
+    cnt = np.maximum(np.bincount(Y[has_hard], minlength=3), 1)
+    cw = cnt.sum() / (3.0 * cnt)
+elif CW == "none":
+    cw = np.ones(3)
+else:
+    cw = np.array([float(x) for x in CW.split(",")]); assert len(cw) == 3
+cw_t = torch.tensor(cw, dtype=torch.float32, device=DEVICE)
+log(f"{len(df):,} rows from {DATA} (sha {DATA_SHA[:12]}) | hard {int(has_hard.sum()):,} "
+    f"teacher {int(has_teacher.sum()):,} both {int((has_hard & has_teacher).sum()):,} | "
+    f"CW {np.round(cw, 3).tolist()} | alpha {ALPHA} beta {BETA} T {TEMP}")
+
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+# TRUST=1 for repos shipping custom code (gte / TY-ecomm-embed); decoder backbones
+# (Qwen3, Vision-Flash) usually declare no pad token -> reuse EOS, and their
+# sequence-classification head reads the LAST non-pad token, which needs RIGHT padding.
+TRUST = os.environ.get("TRUST", "0") == "1"
+tok = AutoTokenizer.from_pretrained(MODEL, trust_remote_code=TRUST)
+if tok.pad_token is None:
+    tok.pad_token = tok.eos_token
+tok.padding_side = "right"
+A = df["query"].tolist()                            # e07 serialization, verbatim
+B = (df.title + " | " + df.brand + " | " + df.category + " | "
+     + df.gender + " " + df.age_group + " | " + df.attributes).tolist()
+if os.environ.get("SANDWICH","0")=="1":                    # causal models: re-read the query after the item
+    B=[b+" || "+q for b,q in zip(B,A)]
+    print("SANDWICH=1 serialization")
+
+def tok_lens(chunk=4096):
+    out = []
+    for s in range(0, len(A), chunk):
+        e = tok(A[s:s + chunk], B[s:s + chunk], truncation=True, max_length=MAXLEN)
+        out += [len(x) for x in e["input_ids"]]
+    return np.asarray(out)
+
+lens = tok_lens()
+budget, cap = (BUDGET, max(BS * 4, 96)) if BUDGET else (1 << 60, BS)   # 0 -> pure fixed-BS cut
+plan = []
+for ep in range(EPOCHS):
+    plan += train_plan(lens, budget, seed=SEED + ep, cap=cap)
+steps = len(plan)
+log(f"{steps} batches / {sum(len(b) for b in plan):,} row-visits / {EPOCHS} epoch(s) | "
+    f"tokens p50 {np.median(lens):.0f} p95 {np.percentile(lens, 95):.0f} max {lens.max()} | "
+    f"batching {'token-budget ' + str(BUDGET) if BUDGET else f'fixed BS={BS} length-grouped'}")
+
+class PlanDS(Dataset):
+    """One item = one pre-planned batch, tokenized in the worker (overlaps with the GPU)."""
+    def __init__(s, plan): s.plan = plan
+    def __len__(s): return len(s.plan)
+    def __getitem__(s, i):
+        b = s.plan[i]
+        enc = tok([A[j] for j in b], [B[j] for j in b], truncation=True, max_length=MAXLEN,
+                  padding=True, return_tensors="pt")
+        return (enc, torch.from_numpy(Y[b]), torch.from_numpy(QT[b]),
+                torch.from_numpy(has_hard[b]), torch.from_numpy(has_teacher[b]))
+
+dl = DataLoader(PlanDS(plan), batch_size=None, shuffle=False, num_workers=NW)
+
+# ---------------------------------------------------------------- model + optimizer
+_mk = dict(num_labels=3, trust_remote_code=TRUST, ignore_mismatched_sizes=True)  # rerankers ship 1-output heads; ours is retrained
+if os.environ.get("DTYPE", "") == "bf16":
+    _mk["dtype"] = torch.bfloat16                      # billion-param backbones
+model = AutoModelForSequenceClassification.from_pretrained(MODEL, **_mk).to(DEVICE)
+if model.config.pad_token_id is None:
+    model.config.pad_token_id = tok.pad_token_id
+if os.environ.get("GRAD_CKPT", "0") == "1":
+    model.gradient_checkpointing_enable()
+    model.config.use_cache = False
+opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD)
+warm = max(1, int(WARMUP * steps))
+sched = torch.optim.lr_scheduler.LambdaLR(
+    opt, lambda s: (s + 1) / warm if s < warm
+    else 0.5 * (1 + math.cos(math.pi * (s - warm) / max(1, steps - warm))))
+
+def loss_fn(logits, y, qt, hh, ht):
+    """Per-row alpha/beta mix; a row missing one signal takes the other at full weight."""
+    n, total = logits.shape[0], logits.new_zeros(())
+    if hh.any():
+        ce = F.cross_entropy(logits[hh], y[hh], weight=cw_t,
+                             label_smoothing=SMOOTH, reduction="none")
+        total = total + (torch.where(ht[hh], ce.new_tensor(ALPHA), ce.new_tensor(1.0)) * ce).sum()
+    if ht.any():
+        ls = F.log_softmax(logits[ht] / TEMP, -1)
+        kd = -(qt[ht] * ls).sum(-1) * TEMP * TEMP    # softCE == KL(q||s_T)+const; Hinton T^2 scale
+        total = total + (torch.where(hh[ht], kd.new_tensor(BETA), kd.new_tensor(1.0)) * kd).sum()
+    if AUX_SI > 0:
+        # B2 §1.2/1.3: the semi/irrelevant boundary owns 2.2x the headroom of the relevant one and
+        # converts at ~0.87 macro-F1 per AUC point. 3-way CE spends most of its gradient on the
+        # (already easy) relevant decision, so add an explicit binary margin on the S|I pair,
+        # restricted to hard-labelled non-relevant rows. Same shape as the e11 12B loss.
+        nr = hh & (y != 2)
+        if nr.any():
+            z = logits[nr][:, 1] - logits[nr][:, 0]           # semi-vs-irrelevant margin
+            bce = F.binary_cross_entropy_with_logits(z, (y[nr] == 1).float(), reduction="none")
+            total = total + AUX_SI * bce.sum()
+    return total / n
+
+model.train()
+t0, ntok, win = time.time(), 0, []
+for i, (enc, y, qt, hh, ht) in enumerate(dl, 1):
+    enc = {k: v.to(DEVICE) for k, v in enc.items()}
+    y, qt, hh, ht = (t.to(DEVICE) for t in (y, qt, hh, ht))
+    if AMP:
+        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            logits = model(**enc).logits
+    else:
+        logits = model(**enc).logits
+    loss = loss_fn(logits.float(), y, qt, hh, ht)
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), CLIP)
+    opt.step(); sched.step(); opt.zero_grad(set_to_none=True)
+    win.append(loss.item()); ntok += int(enc["attention_mask"].sum())
+    if i % LOG_E == 0:
+        el = time.time() - t0
+        rows = sum(len(plan[k]) for k in range(i))
+        log(f"  step {i}/{steps} loss {np.mean(win):.4f} lr {sched.get_last_lr()[0]:.2e} | "
+            f"{rows/el:.0f} rows/s {ntok/el:.0f} tok/s | eta {el/i*(steps-i)/60:.1f} min")
+        win = []
+
+# ---------------------------------------------------------------- checkpoint (HF + lean e12)
+ckpt = f"{OUT}/ckpt_{TAG}"
+os.makedirs(ckpt, exist_ok=True)
+model.save_pretrained(ckpt, safe_serialization=True)     # model.safetensors + config.json
+tok.save_pretrained(ckpt)
+if not os.path.exists(f"{ckpt}/tokenizer.json"):         # lean path needs the Rust tokenizer
+    tok.backend_tokenizer.save(f"{ckpt}/tokenizer.json")
+json.dump({"head": "softmax3"}, open(f"{ckpt}/decision.json", "w"))
+
+el = time.time() - t0
+meta = dict(tag=TAG, model=MODEL, data=DATA, data_sha256=DATA_SHA, rows=int(len(df)),
+            n_hard=int(has_hard.sum()), n_teacher=int(has_teacher.sum()),
+            n_both=int((has_hard & has_teacher).sum()),
+            epochs=EPOCHS, bs=BS, budget=BUDGET, lr=LR, maxlen=MAXLEN, seed=SEED,
+            temp=TEMP, alpha=ALPHA, beta=BETA, smooth=SMOOTH, aux_si=AUX_SI, class_weights=np.round(cw, 4).tolist(),
+            loss="alpha*CE(hard,ls=%.2f,cw)+beta*T^2*softCE(teacher@T) ; solo signal at weight 1" % SMOOTH,
+            steps=steps, wall_seconds=round(el, 1),
+            rows_per_s=round(sum(len(b) for b in plan) / max(el, 1e-6), 1),
+            tok_per_s=round(ntok / max(el, 1e-6), 1),
+            final_loss=float(np.mean(win)) if win else None,
+            amp="bf16-autocast-no-gradscaler" if AMP else "fp32-cpu-smoke", smoke=SMOKE,
+            device=torch.cuda.get_device_name(0) if DEVICE == "cuda" else "cpu",
+            torch=torch.__version__,
+            parity_cmd=f"MODEL={ckpt} OUT={ckpt}_parity .venv-gcp/bin/python "
+                       f"{W}/asya/s2_exp/e12_lean_infer/scripts/verify_parity.py",
+            created_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+json.dump(meta, open(f"{OUT}/train_meta_{TAG}.json", "w"), indent=1)
+log(f"DONE {steps} steps in {el/60:.1f} min ({meta['rows_per_s']} rows/s) -> {ckpt} "
+    f"(HF + lean e12 format) + train_meta_{TAG}.json")

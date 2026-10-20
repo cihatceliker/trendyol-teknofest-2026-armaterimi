@@ -1,0 +1,30 @@
+# ArmaTerimi Stage-2 champion image - runtime Python stack for serve_hf.py.
+# Pinned to the exact versions in /home/jupyter/trendyol-teknofest-work/.venv-gcp
+# (the environment the e15 champion checkpoint was trained and validated with).
+#
+# torch is DELIBERATELY absent: the base image
+# pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime already ships
+# torch 2.10.0+cu128 (same version as .venv-gcp); a pip torch would re-download
+# ~3 GB and could swap the CUDA build. The Dockerfile import-check asserts it.
+transformers==4.57.6
+tokenizers==0.22.1
+safetensors==0.6.2
+numpy==2.2.4
+huggingface-hub==0.36.2
+# transitive pins, mirrored from .venv-gcp for reproducibility
+filelock==3.32.3
+fsspec==2026.7.0
+regex==2026.7.19
+pyyaml==6.0.3
+packaging==24.1
+typing_extensions==4.16.0
+tqdm==4.66.5
+requests==2.28.1
+# --- explainability app (e20, mode 2 only): pandas for the staged
+#     common/normalize.py + e18 attr_clean.py + model_adapter. Same pins as
+#     .venv-gcp; the scoring path never imports any of these.
+pandas==2.3.3
+python-dateutil==2.9.0.post0
+pytz==2026.3.post1
+tzdata==2026.3
+six==1.17.0

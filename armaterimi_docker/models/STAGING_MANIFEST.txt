@@ -1,0 +1,32 @@
+staged_at_utc: 2026-08-28T18:30:23Z
+model_src: /home/jupyter/trendyol-teknofest-work/asya/s2_exp/e15_student/outputs_frozen_v2/ckpt_gf2_berturk_6ep_bf16
+serve_src: /home/jupyter/trendyol-teknofest-work/asya/s2_exp/e12_lean_infer/scripts
+model_file_sha256:
+  d95e888733ff2daaf7e1766acb8ba1b95f735e81b219b2264f956d136ca54399  config.json
+  a019cf0ef816e11c279011bd3347499557006da431b6d7ea4691c32bc7fc1dc9  decision.json
+  2a0d4c78c2fe0c491f7915152337c15296af1839332ba0e0a7b470420082e191  model.safetensors
+  b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3  special_tokens_map.json
+  5e9bf01bb00e67095147ac4645d8d43471df6ccabc4224e89927d7b74df4c543  tokenizer.json
+  a863b0d6fdec6d084c23c89f7d814cabbb263676e2717c3b300dd2084c79652c  tokenizer_config.json
+  320a6f8bd8b6a0f3996db82a615e2eb528cbf1eacf9e21d572bf9db34ff090df  vocab.txt
+src_file_sha256:
+  fa93d8c8f715750ca7517ed5d3eec594c0e5858a8cfcf3cdc23b35e35c5be3ba  lean_gte.py
+  fac106bef146d46e78c847cb16b383462d8f9c6522a36365268c4875dabec121  lean_infer.py
+  98b4b6c1cf0a54d0b059302f651ea75dd306a2c98fcff78fe2f411b38269dc93  predict.py
+  fc268ec4f4a4aaad4035c6c62d89ad5fd7909df209a7032aa1eb20c9794501c3  serve_gte.py
+  1c58d8208744ed21017bc0f62656ffce974b3523e574c8f2ebfcf0619c3ea2cf  serve_hf.py
+entrypoint_sha256:
+  ec6bd047a5fef211a4c52100c008975d4808750d5536d63b71be36af30044fdc  entrypoint.sh
+explain_src: /home/jupyter/trendyol-teknofest-work/asya/s2_exp/e20_explain_ty
+explain_file_sha256:
+  4cc31332a9856e0212e00099622e3038704e45106578247bd201560f7fa681c7  explain/scripts/app.py
+  f492c2a64eac3f7e1114fec3b0d1f4af719c8c67a5d1bd014393a7ca8a2edccc  explain/scripts/model_adapter.py
+  836f55e7e0a7d1a5152a5b4f9f433f69669b0acda73b2881b7b876cbbd6606d6  explain/static/index.html
+  57058b01dde01179d4d8ef123146d0d055739ba3a3d6ac3310c4f35c039727a3  explain/common/normalize.py
+  3a5bf64df2f2123b5edcac51ea500eee8c613974dcffac05a3126c4765bdad46  explain/common/drop_keys.csv
+  ba9f2d0ba4c40a1317c57b6d83c20dc90c088b6eff2a6adce0c95ed6c9eca4aa  explain/e18_attr_clean/attr_clean.py
+  a274c379a5e2d7be703c6f122f7d8187ce8a3aa6c3abe519eee385405b222882  explain/e18_attr_clean/drop_keys_v2.csv
+ngrok_version: 3.39.11
+ngrok_url: https://bin.equinox.io/a/5Mrhp7gRDVb/ngrok-v3-3.39.11-linux-amd64.tar.gz
+ngrok_sha256:
+  e4e0f05c3b016699daa3fc4ff03d0870e49f705171d2dac5f16d00c55c10dee5  vendor/ngrok
